@@ -1,0 +1,53 @@
+name: Build NSP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and Pack
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:20230910
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y gh icoutils
+
+      - name: Setup environment
+        run: sudo bash setup.bash
+
+      - name: Build engine
+        run: sudo bash build.bash
+
+      - name: Download and reassemble game from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/parts
+          gh release download v0.11.6B --pattern "*.zip.0*" --output /tmp/parts/
+          cat /tmp/parts/innocent-witches.zip.001 /tmp/parts/innocent-witches.zip.002 > /tmp/game.zip
+          mkdir -p /tmp/gamedir
+          unzip /tmp/game.zip -d /tmp/gamedir
+          GAME_DIR=$(find /tmp/gamedir -name "*.exe" -printf '%h\n' | head -1)
+          if [ -z "$GAME_DIR" ]; then
+            GAME_DIR=$(find /tmp/gamedir -maxdepth 1 -mindepth 1 -type d | head -1)
+          fi
+          echo "GAME_DIR=$GAME_DIR" >> $GITHUB_ENV
+          echo "Found game at: $GAME_DIR"
+
+      - name: Pack NSP
+        run: |
+          sudo bash pack_nsp.bash "$GAME_DIR" InnocentWitches.nsp "Innocent Witches" -p "Sad Crab" -v "0.11.6B"
+
+      - name: Upload NSP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InnocentWitches-NSP
+          path: InnocentWitches.nsp
+          retention-days: 14
